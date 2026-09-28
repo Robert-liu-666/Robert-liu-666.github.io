@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Robert_liu_666 :: ~/blog — tui_blog v1.0</title>
+<style>
+/* ============================================================
+   复古琥珀 CRT 终端风格个人主页
+   配色灵感：老式 CRT 显示器的琥珀色荧光
+   ============================================================ */
+:root {
+  --bg: #0f0a03;
+  --bg-bar: #1c1305;
+  --amber: #ffb000;
+  --amber-bright: #ffd25e;
+  --amber-dim: #8a6518;
+  --amber-faint: #4a370d;
+  --glow: rgba(255, 176, 0, 0.45);
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html, body {
+  height: 100%;
+  background: var(--bg);
+  overflow: hidden;
+}
+
+body {
+  font-family: "VT323", "IBM Plex Mono", "Cascadia Mono", Consolas, "Courier New", monospace;
+  color: var(--amber);
+  font-size: 17px;
+  line-height: 1.5;
+}
+
+/* ---------- CRT 效果层 ---------- */
+.crt::before {
+  /* 扫描线 */
+  content: "";
+  position: fixed;
+  inset: 0;
+  background: repeating-linear-gradient(
+    to bottom,
+    transparent 0px,
+    transparent 2px,
+    rgba(0, 0, 0, 0.22) 3px,
+    rgba(0, 0, 0, 0.22) 4px
+  );
+  pointer-events: none;
+  z-index: 50;
+}
+.crt::after {
+  /* 暗角 */
+  content: "";
+  position: fixed;
+  inset: 0;
+  background: radial-gradient(ellipse at center, transparent 55%, rgba(0,0,0,0.55) 100%);
+  pointer-events: none;
+  z-index: 51;
+}
+.flicker {
+  animation: flicker 4s infinite;
+}
+@keyframes flicker {
+  0%, 100% { opacity: 1; }
+  97% { opacity: 1; }
+  98% { opacity: 0.93; }
+  99% { opacity: 0.97; }
+}
+
+.glow {
+  text-shadow: 0 0 6px var(--glow), 0 0 1px var(--glow);
+}
+
+/* ---------- 整体布局：顶栏 / 主区域 / 底栏 ---------- */
+.terminal {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  height: 100dvh;
+}
+
+/* 顶栏 */
+.topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 14px;
+  background: var(--bg-bar);
+  border-bottom: 1px solid var(--amber-faint);
+  color: var(--amber-dim);
+  font-size: 14px;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.topbar .left { color: var(--amber); }
+.topbar .right { flex-shrink: 0; }
+
+/* 主输出区 */
+.screen {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 20px 24px;
+  cursor: text;
+}
+.screen::-webkit-scrollbar { width: 8px; }
+.screen::-webkit-scrollbar-thumb { background: var(--amber-faint); }
+.screen::-webkit-scrollbar-track { background: transparent; }
+
+.line { white-space: pre-wrap; word-break: break-all; min-height: 1.5em; }
+.line.dim { color: var(--amber-dim); }
+.line.bright { color: var(--amber-bright); }
+.line a { color: var(--amber-bright); text-decoration: underline; }
+
+/* 输入行 */
+.input-line { display: flex; flex-wrap: wrap; }
+.prompt { color: var(--amber-bright); white-space: pre; }
+.prompt .path { color: var(--amber); }
+#typed { white-space: pre-wrap; word-break: break-all; }
+.cursor {
+  display: inline-block;
+  width: 0.62em;
+  height: 1.15em;
+  background: var(--amber);
+  vertical-align: text-bottom;
+  box-shadow: 0 0 8px var(--glow);
+  animation: blink 1s steps(1) infinite;
+}
+@keyframes blink { 50% { opacity: 0; } }
+
+/* 底栏 */
+.statusbar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  background: var(--bg-bar);
+  border-top: 1px solid var(--amber-faint);
+  font-size: 14px;
+  padding: 4px 0;
+  user-select: none;
+  overflow-x: auto;
+  white-space: nowrap;
+}
+.statusbar::-webkit-scrollbar { display: none; }
+.mode {
+  background: var(--amber);
+  color: #1a1000;
+  font-weight: bold;
+  padding: 1px 10px;
+  margin-right: 10px;
+  text-shadow: none;
+}
+.fkey {
+  padding: 1px 8px;
+  color: var(--amber-dim);
+  cursor: pointer;
+}
+.fkey b { color: var(--amber); font-weight: bold; }
+.fkey:hover { background: var(--amber-faint); color: var(--amber-bright); }
+.clock { margin-left: auto; padding: 1px 12px; color: var(--amber); flex-shrink: 0; }
+
+/* 隐藏的真实输入框 */
+#hidden-input {
+  position: fixed;
+  opacity: 0;
+  top: 0; left: 0;
+  width: 1px; height: 1px;
+  border: none; outline: none;
+}
+
+@media (max-width: 640px) {
+  body { font-size: 15px; }
+  .topbar .right { display: none; }
+}
+</style>
+</head>
+<body class="crt flicker glow">
+
+<div class="terminal">
+  <!-- 顶栏 -->
+  <div class="topbar">
+    <span class="left" id="topbar-left"></span>
+    <span class="right" id="topbar-right"></span>
+  </div>
+
+  <!-- 主屏幕 -->
+  <div class="screen" id="screen">
+    <div id="output"></div>
+    <div class="input-line" id="input-line">
+      <span class="prompt" id="prompt"></span><span id="typed"></span><span class="cursor"></span>
+    </div>
+  </div>
+
+  <!-- 底栏 -->
+  <div class="statusbar" id="statusbar">
+    <span class="mode">NORMAL</span>
+    <!-- F 键由 JS 生成 -->
+    <span class="clock" id="clock">--:--:--</span>
+  </div>
+</div>
+
+<input id="hidden-input" autocomplete="off" autocapitalize="off" spellcheck="false">
+
+<script>
+/* ============================================================
+ * CONFIG —— 你的所有个人内容都在这里改，改完保存刷新即可
+ * ============================================================ */
+const CONFIG = {
+  user: "Robert_liu_666",
+  host: "openworld-dev",
+  version: "tui_blog v1.0",
+
+  // F2 whoami —— 个人简介（每行一个字符串）
+  whoami: [
+    "Robert_liu_666",
+    "==============================",
+    "",
+    "  · 一句话简介：在这里写你是谁（占位）",
+    "  · 教育经历：XX大学 · XX专业（占位）",
+    "  · 技能：Python / JavaScript / ...（占位）",
+    "  · 正在做的事：在这里写你最近的折腾（占位）",
+    "",
+    "  提示：打开 index.html 顶部的 CONFIG 改成你的真实信息",
+  ],
+
+  // F3 projects —— 项目列表
+  projects: [
+    { name: "project-alpha", desc: "项目简介占位：这个项目是做什么的", link: "https://github.com/" },
+    { name: "project-beta",  desc: "项目简介占位：技术栈 / 亮点",      link: "https://github.com/" },
+    { name: "project-gamma", desc: "项目简介占位：为什么有意思",        link: "https://github.com/" },
+  ],
+
+  // F4 blog —— 博客文章
+  blog: [
+    { date: "2026-09-01", title: "博客文章标题占位：我的第一篇文章" },
+    { date: "2026-08-15", title: "博客文章标题占位：最近学到的东西" },
+    { date: "2026-07-20", title: "博客文章标题占位：一次有趣的折腾" },
+  ],
+
+  // F5 contact —— 联系方式
+  contact: [
+    { label: "GitHub",  value: "github.com/your-name",  link: "https://github.com/" },
+    { label: "Email",   value: "you@example.com",       link: "mailto:you@example.com" },
+    { label: "Website", value: "your-site.com",         link: "#" },
+  ],
+
+  // F6 neofetch —— 系统信息名片
+  neofetch: {
+    OS: "OpenWorld Linux x86_64",
+    Host: "GitHub Pages",
+    Uptime: "forever",
+    Shell: "tui_blog v1.0",
+    Editor: "VS Code",
+    Languages: "占位：你用的编程语言",
+    Interests: "占位：你的兴趣爱好",
+  },
+};
+/* ================== CONFIG 结束，下面不用动 ================== */
+
+const $ = (id) => document.getElementById(id);
+const screenEl = $("screen"), outputEl = $("output");
+const typedEl = $("typed"), inputEl = $("hidden-input");
+const PROMPT = () => `${CONFIG.user}@${CONFIG.host}:~$ `;
+
+// ---------- 顶栏 / 底栏 / 时钟 ----------
+$("topbar-left").textContent  = `${CONFIG.user} :: ~/blog`;
+$("topbar-right").textContent = `${CONFIG.user}@${CONFIG.host} :~/blog — ${CONFIG.version} — tty1`;
+$("prompt").textContent = PROMPT();
+
+const FKEYS = [
+  ["F1", "help"], ["F2", "whoami"], ["F3", "projects"], ["F4", "blog"],
+  ["F5", "contact"], ["F6", "neofetch"], ["F7", "clear"],
+];
+const statusbar = $("statusbar"), clockEl = $("clock");
+FKEYS.forEach(([key, cmd]) => {
+  const el = document.createElement("span");
+  el.className = "fkey";
+  el.innerHTML = `<b>${key}</b> ${cmd}`;
+  el.onclick = () => runCommand(cmd);
+  statusbar.insertBefore(el, clockEl);
+});
+setInterval(() => { clockEl.textContent = new Date().toTimeString().slice(0, 8); }, 1000);
+
+// ---------- 输出 ----------
+function print(text, cls = "") {
+  const div = document.createElement("div");
+  div.className = "line " + cls;
+  div.innerHTML = text === "" ? "&nbsp;" : text;
+  outputEl.appendChild(div);
+  screenEl.scrollTop = screenEl.scrollHeight;
+}
+function printLines(lines, cls = "", delay = 14) {
+  return new Promise((resolve) => {
+    let i = 0;
+    (function next() {
+      if (i >= lines.length) return resolve();
+      print(lines[i++], cls);
+      setTimeout(next, delay);
+    })();
+  });
+}
+const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+const link = (url, text) => `<a href="${url}" target="_blank" rel="noopener">${esc(text || url)}</a>`;
+
+// ---------- 命令表 ----------
+const COMMANDS = {
+  help: () => [
+    "可用命令：",
+    "",
+    "  help        显示本帮助            (F1)",
+    "  whoami      关于我                (F2)",
+    "  projects    项目展示              (F3)",
+    "  blog        博客文章              (F4)",
+    "  contact     联系方式              (F5)",
+    "  neofetch    系统信息名片          (F6)",
+    "  clear       清屏                  (F7)",
+    "",
+    "  也可以直接输入命令，支持 ↑/↓ 翻历史记录",
+    "  提示：试试 sudo、exit、vim、hack、ls ...",
+  ],
+  whoami: () => CONFIG.whoami,
+  projects: () => {
+    const out = ["# projects", ""];
+    CONFIG.projects.forEach((p, i) => {
+      out.push(`  [${i + 1}] ${p.name}`);
+      out.push(`      ${p.desc}`);
+      out.push(`      ${link(p.link)}`);
+      out.push("");
+    });
+    return out;
+  },
+  blog: () => {
+    const out = ["# blog", ""];
+    CONFIG.blog.forEach((b) => out.push(`  ${b.date}  ${b.title}`));
+    out.push("");
+    return out;
+  },
+  contact: () => {
+    const out = ["# contact", ""];
+    CONFIG.contact.forEach((c) => out.push(`  ${c.label.padEnd(10, " ")} ${link(c.link, c.value)}`));
+    out.push("");
+    return out;
+  },
+  neofetch: () => {
+    const logo = [
+      "      .--.      ",
+      "   .-(    ).    ",
+      "  (__.__)__)    ",
+      "   (      )     ",
+      "    `----'      ",
+    ];
+    const keys = Object.keys(CONFIG.neofetch);
+    const info = [`${CONFIG.user}@${CONFIG.host}`, "-".repeat(CONFIG.user.length + CONFIG.host.length + 1),
+      ...keys.map((k) => `${k}: ${CONFIG.neofetch[k]}`)];
+    const rows = Math.max(logo.length, info.length);
+    const out = [];
+    for (let i = 0; i < rows; i++) {
+      out.push((logo[i] || " ".repeat(15)) + "   " + (info[i] || ""));
+    }
+    out.push("");
+    return out;
+  },
+  clear: () => { outputEl.innerHTML = ""; return []; },
+  ls: (args) => args[0] === ".secret"
+    ? ["你觉得我会把秘密放在这里吗 :)"]
+    : ["about.txt  projects/  blog/  contact.txt  .secret/"],
+  pwd: () => ["/home/" + CONFIG.user + "/blog"],
+  date: () => [new Date().toString()],
+  echo: (args) => [args.join(" ")],
+  uname: () => ["OpenWorld Linux tty1 6.6.6-amber #1 SMP"],
+};
+
+// ---------- 彩蛋 ----------
+const EGGS = {
+  sudo: () => ["[sudo] password for " + CONFIG.user + ": ********",
+               "权限不足。这次就不上报管理员了，下不为例。"],
+  exit: () => ["There is no escape. :)"],
+  quit: () => EGGS.exit(),
+  vim:  () => ["你打开了一个无法退出的编辑器。", "提示：按 F7 试试。"],
+  vi:   () => EGGS.vim(),
+  emacs: () => ["很好的选择。可惜这里只有 vim（也无法退出）。"],
+  hack: async () => {
+    await printLines(["[*] 正在扫描目标 ...", "[*] 发现漏洞 CVE-2077-666", "[+] 渗透成功！"], "dim", 500);
+    return ["开玩笑的，这只是一个静态网页。"];
+  },
+  matrix: () => ["Wake up, Neo ...", "The Matrix has you ...", "Follow the amber rabbit."],
+  hello: () => ["你好呀，陌生人。输入 help 看看这里能做什么。"],
+  hi: () => EGGS.hello(),
+  "42": () => ["生命、宇宙以及任何事情的终极答案。"],
+  rm: (args) => args.join(" ").includes("-rf")
+    ? ["rm: 无法删除 '/': 这个页面被主人的执念保护着"]
+    : ["rm: 缺少操作数（还好你少打了点什么）"],
+};
+
+// ---------- 命令执行 ----------
+const history = [];
+let histIdx = -1, busy = false;
+
+async function runCommand(raw) {
+  if (busy) return;
+  const input = (raw !== undefined ? raw : inputEl.value).trim();
+  if (raw === undefined) { echoInput(input); inputEl.value = ""; renderTyped(); }
+  if (!input) { if (raw === undefined) return; return; }
+  if (input !== raw) { history.push(input); histIdx = history.length; }
+
+  const [cmd, ...args] = input.split(/\s+/);
+  busy = true;
+  if (COMMANDS[cmd]) {
+    const lines = COMMANDS[cmd](args);
+    if (lines) await printLines(lines);
+  } else if (EGGS[cmd]) {
+    const lines = EGGS[cmd](args);
+    if (lines) { if (lines.then) lines = await lines; await printLines(lines, "dim"); }
+  } else {
+    await printLines([`bash: ${cmd}:  command not found`, "输入 help 查看可用命令"], "dim");
+  }
+  busy = false;
+  screenEl.scrollTop = screenEl.scrollHeight;
+}
+
+function echoInput(text) {
+  print(`<span class="prompt">${esc(PROMPT())}</span><span class="bright">${esc(text)}</span>`);
+}
+
+// ---------- 输入处理 ----------
+function renderTyped() { typedEl.textContent = inputEl.value; }
+screenEl.addEventListener("click", () => inputEl.focus());
+document.addEventListener("click", () => inputEl.focus());
+inputEl.addEventListener("input", renderTyped);
+
+document.addEventListener("keydown", (e) => {
+  // F1-F7 拦截（阻止浏览器默认行为）
+  const fk = FKEYS.find(([k]) => k === e.key);
+  if (fk) { e.preventDefault(); runCommand(fk[1]); return; }
+
+  if (e.key === "Enter") { runCommand(); return; }
+  if (e.key === "ArrowUp") {
+    e.preventDefault();
+    if (histIdx > 0) { inputEl.value = history[--histIdx] || ""; renderTyped(); }
+    return;
+  }
+  if (e.key === "ArrowDown") {
+    e.preventDefault();
+    if (histIdx < history.length - 1) inputEl.value = history[++histIdx];
+    else { histIdx = history.length; inputEl.value = ""; }
+    renderTyped();
+    return;
+  }
+  if (e.ctrlKey && e.key.toLowerCase() === "l") { e.preventDefault(); runCommand("clear"); return; }
+  inputEl.focus();
+});
+
+// ---------- 开机动画 ----------
+(async function boot() {
+  busy = true;
+  await printLines([
+    `[ OK ] ${CONFIG.version} 初始化完成`,
+    `[ OK ] 载入用户配置: ${CONFIG.user}`,
+    `[ OK ] 挂载 ~/blog`,
+    `[ OK ] CRT 琥珀磷光层已激活`,
+    "",
+    "欢迎来到我的终端。输入 help 或按 F1 查看可用命令。",
+    "",
+  ], "dim", 180);
+  busy = false;
+  inputEl.focus();
+})();
+</script>
+</body>
+</html>
